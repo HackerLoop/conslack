@@ -128,8 +128,16 @@ func (a *App) openTopic(g *gocui.Gui, topicName string) error {
 	v.SetCursor(0, 0)
 	v.SetOrigin(0, 0)
 
-	// Add this to header
-	// v.Title = "Discussion: " + channelName
+	h, err := g.View("header")
+	if err != nil {
+		logrus.WithError(err).Error("unable to get messages status")
+		return err
+	}
+
+	g.Execute(func(g *gocui.Gui) error {
+		fmt.Fprintf(h, topicName)
+		return nil
+	})
 
 	messages, err := a.c.History(topicName)
 	if err != nil {
