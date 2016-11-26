@@ -26,8 +26,11 @@ type App struct {
 	g *gocui.Gui
 	s *state
 
-	// components
-	header *HeaderWidget
+	// widgets
+	headerWidget    *HeaderWidget
+	statusBarWidget *HeaderWidget
+	messagesWidget  *MessagesWidget
+	inputWidget     *InputWidget
 }
 
 // NewApp returns a new Application connected to a conslack Client
@@ -50,11 +53,11 @@ func NewApp(c *conslack.Client) (*App, error) {
 	g.Mouse = false
 	g.InputEsc = true
 
-	if err := a.createComponents(); err != nil {
+	if err := a.createWidgets(); err != nil {
 		return nil, err
 	}
 
-	g.SetManager(a.header)
+	g.SetManager(a.headerWidget, a.messagesWidget, a.statusBarWidget, a.inputWidget)
 
 	if err := a.assignGlobalKeyBindings(); err != nil {
 		return nil, err
@@ -63,10 +66,13 @@ func NewApp(c *conslack.Client) (*App, error) {
 	return &a, nil
 }
 
-func (a *App) createComponents() error {
-	maxX, _ := a.g.Size()
+func (a *App) createWidgets() error {
+	maxX, maxY := a.g.Size()
 
-	a.header = NewHeaderWidget("header", "Conslack: connecting ...", Position{-1, -1, maxX, 1})
+	a.headerWidget = NewHeaderWidget("header", "Conslack: connecting ...", Position{-1, -1, maxX, 1})
+	a.statusBarWidget = NewHeaderWidget("status", "StatusBar", Position{-1, maxY - defaultInputWidgetHeight - 3, maxX, maxY - defaultInputWidgetHeight})
+	a.inputWidget = NewInputWidget("input", Position{-1, maxY - defaultInputWidgetHeight - 2, maxX, maxY})
+	a.messagesWidget = NewMessagesWidget("messages", nil, Position{-1, 0, maxX, maxY - defaultInputWidgetHeight - 1})
 
 	return nil
 }
