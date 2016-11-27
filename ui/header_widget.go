@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/jroimartin/gocui"
 )
 
@@ -16,7 +17,7 @@ type HeaderWidget struct {
 }
 
 // NewHeaderWidget creates a new header named `name` positioned at `position`
-func NewHeaderWidget(name string, value string, position Position) *HeaderWidget {
+func NewHeaderWidget(name string, value string, e executeFn, position Position) *HeaderWidget {
 	return &HeaderWidget{
 		name:     name,
 		value:    value,
@@ -43,6 +44,8 @@ func (h *HeaderWidget) Layout(g *gocui.Gui) error {
 			return nil
 		})
 	}
+
+	logrus.WithField("name", h.name).Debugf("Layout")
 
 	return nil
 }

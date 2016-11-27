@@ -11,7 +11,7 @@ type InputWidget struct {
 const defaultInputWidgetHeight = 2
 
 // NewInputWidget creates a new messages widget for room `r`, positioned at `position`
-func NewInputWidget(name string, position Position) *InputWidget {
+func NewInputWidget(name string, e executeFn, position Position) *InputWidget {
 	return &InputWidget{
 		name:     name,
 		Position: position,

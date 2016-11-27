@@ -1,21 +1,28 @@
 package ui
 
 import (
+	"sync"
+	"time"
+
 	"github.com/Sirupsen/logrus"
-	"github.com/hackerloop/conslack"
 	"github.com/jroimartin/gocui"
+
+	"github.com/hackerloop/conslack"
 )
 
-// a room is either a channel, a private channel or a person
-type room struct {
-	id       string
+// a discussion is either a channel, a private channel or a person
+type discussion struct {
+	name     string
 	title    string
 	messages []conslack.Message
+	close    func()
+	sync.Mutex
 }
 
 type state struct {
-	currentRoomID string
-	rooms         map[string]*room
+	currentDiscussion string
+	discussions       map[string]*discussion
+	sync.Mutex
 }
 
 // App abstracts a ui application.
@@ -33,6 +40,8 @@ type App struct {
 	inputWidget     *InputWidget
 }
 
+type executeFn func(f func(*gocui.Gui) error)
+
 // NewApp returns a new Application connected to a conslack Client
 func NewApp(c *conslack.Client) (*App, error) {
 	g, err := gocui.NewGui()
@@ -43,7 +52,9 @@ func NewApp(c *conslack.Client) (*App, error) {
 	a := App{
 		c: c,
 		g: g,
-		s: &state{},
+		s: &state{
+			discussions: make(map[string]*discussion),
+		},
 	}
 
 	g.Highlight = true
@@ -69,10 +80,47 @@ func NewApp(c *conslack.Client) (*App, error) {
 func (a *App) createWidgets() error {
 	maxX, maxY := a.g.Size()
 
-	a.headerWidget = NewHeaderWidget("header", "Conslack: connecting ...", Position{-1, -1, maxX, 1})
-	a.statusBarWidget = NewHeaderWidget("status", "StatusBar", Position{-1, maxY - defaultInputWidgetHeight - 3, maxX, maxY - defaultInputWidgetHeight})
-	a.inputWidget = NewInputWidget("input", Position{-1, maxY - defaultInputWidgetHeight - 2, maxX, maxY})
-	a.messagesWidget = NewMessagesWidget("messages", nil, Position{-1, 0, maxX, maxY - defaultInputWidgetHeight - 1})
+	a.headerWidget = NewHeaderWidget(
+		"header",
+		"Conslack: connecting ...",
+		a.g.Execute,
+		Position{
+			-1,
+			-1,
+			maxX,
+			1,
+		})
+
+	a.statusBarWidget = NewHeaderWidget(
+		"status",
+		"StatusBar",
+		a.g.Execute,
+		Position{
+			-1,
+			maxY - defaultInputWidgetHeight - 3,
+			maxX,
+			maxY - defaultInputWidgetHeight,
+		})
+
+	a.inputWidget = NewInputWidget(
+		"input",
+		a.g.Execute,
+		Position{
+			-1,
+			maxY - defaultInputWidgetHeight - 2,
+			maxX,
+			maxY,
+		})
+
+	a.messagesWidget = NewMessagesWidget(
+		"messages",
+		a.g.Execute,
+		Position{
+			-1,
+			0,
+			maxX,
+			maxY - defaultInputWidgetHeight - 1,
+		})
 
 	return nil
 }
@@ -85,10 +133,68 @@ func (a *App) assignGlobalKeyBindings() error {
 	return nil
 }
 
+func (a *App) jumpToDiscussion(name string) {
+	a.s.currentDiscussion = name
+
+	if _, ok := a.s.discussions[name]; !ok {
+		a.subscribeDiscussion(name)
+	}
+}
+
+func (a *App) subscribeDiscussion(name string) {
+	if _, ok := a.s.discussions[name]; ok {
+		return
+	}
+
+	// TODO rework how r is created to ensure proper sync
+	r := &discussion{
+		name:  name,
+		title: name,
+	}
+	a.s.discussions[name] = r
+	logrus.WithField("discussion", name).Debugf("subscribing to discussion")
+
+	go func() {
+		messages, err := a.c.History(name)
+		if err != nil {
+			logrus.WithError(err).Error("unable to get history")
+			// an error is swallowed here
+			return
+		}
+		logrus.WithField("discussion", name).WithField("count", len(messages)).Debugf("received history")
+
+		r.messages = messages
+
+		ch, close, err := a.c.Messages(name)
+		if err != nil {
+			logrus.WithError(err).Fatal("unable to get realtime messages")
+		}
+		r.close = close
+
+		// TODO synchronize this
+		if r.name == a.s.currentDiscussion {
+			a.messagesWidget.SetMessages(r.messages)
+		}
+
+		for m := range ch {
+			r.messages = append(r.messages, m)
+
+			// TODO synchronize this
+			if r.name == a.s.currentDiscussion {
+				a.messagesWidget.AppendMessage(m)
+			}
+		}
+	}()
+
+}
+
 // Loop starts the event loop and will block until
 // either an error is returned or that the ui has been
 // instructed to exit.
 func (a *App) Loop() error {
+	// FIXME
+	time.Sleep(100 * time.Millisecond)
+	a.jumpToDiscussion("#general")
 	return a.g.MainLoop()
 }
 
