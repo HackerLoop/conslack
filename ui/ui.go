@@ -41,6 +41,7 @@ type App struct {
 }
 
 type executeFn func(f func(*gocui.Gui) error)
+type handlerFn func(f func(*gocui.Gui, *gocui.View) error)
 
 // NewApp returns a new Application connected to a conslack Client
 func NewApp(c *conslack.Client) (*App, error) {
@@ -104,6 +105,7 @@ func (a *App) createWidgets() error {
 
 	a.inputWidget = NewInputWidget(
 		"input",
+		nil,
 		a.g.Execute,
 		Position{
 			-1,
@@ -135,6 +137,10 @@ func (a *App) assignGlobalKeyBindings() error {
 
 func (a *App) jumpToDiscussion(name string) {
 	a.s.currentDiscussion = name
+
+	a.inputWidget.SetPostMessageFn(func(message string) error {
+		return a.c.PostMessage(name, message)
+	})
 
 	if _, ok := a.s.discussions[name]; !ok {
 		a.subscribeDiscussion(name)
